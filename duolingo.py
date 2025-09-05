@@ -64,10 +64,6 @@ def main():
         logger.error(" -detach (-stay_open) and -headless are mutually exclusive options.  Please choose one.")
         exit()
 
-    if args.random_delay_mins:
-        delay_seconds = int(args.random_delay_mins) * 60
-        sleep(randint(0,delay_seconds))
-
     # Using Chrome to access web
     #chrome_options = Options()
     chrome_service = Service()
@@ -79,6 +75,9 @@ def main():
     #options.add_argument('--disable-dev-shm-usage')
 
     #chrome_options.page_load_strategy = 'eager'
+
+
+
     if args.headless:
         chrome_options.add_argument('headless')
         #chrome_options.add_argument('start-maximized')
@@ -86,145 +85,200 @@ def main():
         # User agent strings documented here: https://www.whatismybrowser.com/guides/the-latest-user-agent/chrome
         custom_user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36"
         chrome_options.add_argument(f'user-agent={custom_user_agent}')
-    if args.stay_open:
+
+    if args.stay_open or args.schedule:
         chrome_options.add_experimental_option("detach", True)
     
 
-    # Open the website
+    # Print the current time to stdout
+    print("\n")
+    current_datetime = datetime.datetime.now()
+    logger.info("====== START: {0} ======".format(current_datetime))
+
+    # Open the browser
+    browser = start_browser_and_login()
 
 
-    if args.schedule != "":
+    if args.schedule:
+        # User has requested specific times to run the practice exercise.  
         logger.debug("Found schedule list: {0}".format(args.schedule))
-        #schedule.every().hour.do(check_sites_wrapper, browser=browser)
-        # schedule.every().day.at("23:55:00").do(check_sites_wrapper, browser=browser)
 
         for timestring in args.schedule.split(","):
-            logger.info("Scheduling {0}".format(timestring), flush=True)
-            #schedule.every().day.at(timestring).do(check_sites_wrapper)
-            schedule.every().day.at(timestring).do(check_and_book)
-            
+            (hour,minutes) = timestring.split(":")
+
+            # Sunday is special.  Only set if AM. Note that timestring is in 24hr format
+            if (int(hour) < 12):
+                logger.info("Scheduling sunday {0}".format(timestring))
+                schedule.every().sunday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            # Monday is special.  Only set if PM. Note that timestring is in 24hr format
+            if (int(hour) >= 12):
+                logger.info("Scheduling monday {0}".format(timestring))
+                schedule.every().monday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            # All other days, set no matter if AM or PM
+            logger.info("Scheduling tuesday {0}".format(timestring))
+            schedule.every().tuesday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            logger.info("Scheduling wednesday {0}".format(timestring))
+            schedule.every().wednesday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            logger.info("Scheduling thursday {0}".format(timestring))
+            schedule.every().thursday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            logger.info("Scheduling friday {0}".format(timestring))
+            schedule.every().friday.at(timestring).do(do_words_practice_exercise, (browser))
+
+            logger.info("Scheduling saturday {0}".format(timestring))
+            schedule.every().saturday.at(timestring).do(do_words_practice_exercise, (browser))
+
         while True:
-            # Checks whether a scheduled task
-            # is pending to run or not
+            # Get the number of seconds until the next job is due
+            next_job_seconds = schedule.idle_seconds()
+             
+            # If there are no more jobs, exit the loop
+            if next_job_seconds is None:
+                break
+            
+            # If the next job is in the future, sleep for that amount of time
+            if next_job_seconds > 0:
+                current_datetime = datetime.datetime.now()
+                logger.info("{0}: sleeping for {1}".format(current_datetime, next_job_seconds))
+                sleep(next_job_seconds)
+
+            current_datetime = datetime.datetime.now()
+            logger.info("{0}: Done sleeping. Checking for scheduled job".format(current_datetime))
+            
+            # Run any pending jobs that are now due
             schedule.run_pending()
-            sleep(1)
+
+            ##
+            ##            # Since the above sleep is many hours... do a 25 minute loop of sleeping every second
+            ##            # followed by a check for pending runs just to make sure that the next job was caught
+            ##            for i in range(1500):
+            ##                sleep(1)
+            ##                schedule.run_pending()
+            #sleep(5)
+            #schedule.run_pending
 
     else:
+        do_words_practice_exercise(browser)
 
-        # Get the current date and time
-        current_datetime = datetime.datetime.now()
-
-        # Print the datetime object
-        #print(current_datetime)
-        print("\n")
-        logger.info("====== START: {0} ======".format(current_datetime))
-
-        open_url = "https://www.duolingo.com/?isLoggingIn=true"
-
-        logger.info("opening {0}".format(open_url))
-        browser = Browser(chrome_options, chrome_service, open_url)
-        logger.debug("Browser object is created")
-        
-        have_account_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='have-account']")
-        have_account_button.click()
-        sleep(2)
-
-
-        current_url = browser.webpage.current_url
-        login_attempts = 0
-        while (current_url == "https://www.duolingo.com/?isLoggingIn=true" and login_attempts < 5):
-            logger.debug("Current URL: {0}".format(current_url))
-            # When re-attempting, reload just to be sure we're fully reset
-            #if login_attempts > 0:
-            #    browser.webpage = browser.webpage.get(current_url)
-            do_login()
-            browser.webpage.save_screenshot("login_attempts_{0}.png".format(login_attempts))
-            sleep(5)
-            current_url = browser.webpage.current_url
-            login_attempts += 1
-
-        logger.info("New URL: {0}".format(current_url))
-
-        #practice_hub = browser.webpage.find_element(By.XPATH, "//button[@data-test='practice-hub-nav']")
-        #practice_hub.click()
-        new_url = "https://www.duolingo.com/practice-hub"
-        browser.webpage.get(new_url)
-
-        words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-        while (not words_practice):
-            sleep(2)
-            words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-
-        words_practice[0].click()
-
-
-        # Now build vocabulary
-        #alpha list mode
-        #recently_learned = browser.webpage.find_element(By.XPATH, "//span[contains(text(), 'RECENTLY LEARNED')]")
-        #<button aria-controls="web-ui6" aria-haspopup="listbox" class="_33q67 _2bftX" type="button"></button>
-        #recently_learned = browser.webpage.find_element(By.XPATH, "//button[@aria-haspopup='listbox' and @type='button']")
-        #recently_learned = browser.webpage.find_element(By.XPATH, "//button[@type='button']")
-        #recently_learned.click()
-
-        sleep(3)
-        start_button = browser.webpage.find_element(By.XPATH, "//button//span[contains(text(), 'Start')]")
-        start_button.click()
-
-        sleep(8)
-
-        continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next']//span[contains(text(), 'Continue')]")
-        continue_button.click()
-
-
-        logger.debug("\nEnglish words to Spanish words")
-        english_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='en' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']//span[@data-test='challenge-tap-token-text']")
-        english_words_to_spanish_words(english_words)
-        current_datetime = datetime.datetime.now()
-        logger.info("{0}: Finished English words to Spanish words".format(current_datetime))
-        sleep(4)
-
-        # Press Continue
-        continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next']")
-        continue_button.click()
-        sleep(2)
-
-        logger.debug("\nSpanish audio to English words")
-        spanish_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='es' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']")
-        spanish_audio_to_english_word2(spanish_words)
-        current_datetime = datetime.datetime.now()
-        logger.info("{0}: Finished Spanish audio to English words".format(current_datetime))
-        sleep(4)
-
-        # Press Continue
-        continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
-        continue_button.click()
-        sleep(2)
-
-        logger.debug("\nEnglish words to Spanish words")
-        english_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='en' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']//span[@data-test='challenge-tap-token-text']")
-        english_words_to_spanish_words(english_words)
-        current_datetime = datetime.datetime.now()
-        logger.info("{0}: Finished English words to Spanish words".format(current_datetime))
-
-
-        # Press continue as many times as is necessary
-        continue_button = browser.webpage.find_elements(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
-        while (continue_button):
-            continue_button[0].click()
-            sleep(3)
-            continue_button = browser.webpage.find_elements(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
-        
 
 
 ############## Classes and methods ##############
-def test_if_element_exists(elem, search_method, criteria):
-    try:
-        e = elem.find_element(search_method, criteria)
-        return(True)
-    except:
-        return(False)
 
-def do_login():
+def start_browser_and_login():
+    open_url = "https://www.duolingo.com/?isLoggingIn=true"
+    
+    logger.info("opening {0}".format(open_url))
+    browser = Browser(chrome_options, chrome_service, open_url)
+    logger.debug("Browser object is created")
+    
+    have_account_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='have-account']")
+    have_account_button.click()
+    sleep(2)
+    
+    current_url = browser.webpage.current_url
+    login_attempts = 0
+    while (current_url == "https://www.duolingo.com/?isLoggingIn=true" and login_attempts < 5):
+        logger.debug("Current URL: {0}".format(current_url))
+        # When re-attempting, reload just to be sure we're fully reset
+        #if login_attempts > 0:
+        #    browser.webpage = browser.webpage.get(current_url)
+        do_login(browser)
+        browser.webpage.save_screenshot("login_attempts_{0}.png".format(login_attempts))
+        sleep(5)
+
+        login_attempts += 1
+        current_url = browser.webpage.current_url
+        logger.info("New URL: {0}".format(current_url))
+        new_url = "https://www.duolingo.com/practice-hub"
+        browser.webpage.get(new_url)
+
+    return(browser)
+
+
+
+def do_words_practice_exercise(browser):
+    logger.debug("In do_words_practice_exercise()")
+
+    if args.random_delay_mins:
+        delay_seconds = int(args.random_delay_mins) * 60
+        logger.debug("-random_delay_mins option used.  Delaying {0} seconds".format(delay_seconds))
+        sleep(randint(0,delay_seconds))
+    
+    # Rather than looking for the button, how about navigating directly to https://www.duolingo.com/practice-hub/words
+    # Or.... look for the following button if the first fails:
+    # <a data-test="practice-hub-nav" aria-current="page" class="_2dvyl" href="/practice-hub">
+    #   <span class="_22Pme _33YLo p3liX YAEPa _3Dchg">
+    #     <div class="_4fxfA"><img class="_101n8" src="https://d35aaqx5ub95lt.cloudfront.net/vendor/5187f6694476a769d4a4e28149867e3e.svg"></div>
+    #   <span class="_1AZJt">Practice</span></span>
+    # </a>
+    current_url = browser.webpage.current_url
+    logger.info("New URL: {0}".format(current_url))
+    new_url = "https://www.duolingo.com/practice-hub/words"
+    browser.webpage.get(new_url)
+    sleep(10)
+
+
+    #logger.debug("Looking for //button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
+    #words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
+    #while (not words_practice):
+    #    sleep(2)
+    #    logger.debug("Looking for //button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
+    #    words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
+    #
+    #words_practice[0].click()
+    #sleep(3)
+
+    start_button = browser.webpage.find_element(By.XPATH, "//button//span[contains(text(), 'Start')]")
+    start_button.click()
+    sleep(8)
+
+    continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next']//span[contains(text(), 'Continue')]")
+    continue_button.click()
+
+
+    logger.debug("\nEnglish words to Spanish words")
+    english_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='en' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']//span[@data-test='challenge-tap-token-text']")
+    english_words_to_spanish_words(english_words)
+    current_datetime = datetime.datetime.now()
+    logger.info("{0}: Finished English words to Spanish words".format(current_datetime))
+    sleep(4)
+
+    # Press Continue
+    continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next']")
+    continue_button.click()
+    sleep(2)
+
+    logger.debug("\nSpanish audio to English words")
+    spanish_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='es' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']")
+    spanish_audio_to_english_word2(spanish_words)
+    current_datetime = datetime.datetime.now()
+    logger.info("{0}: Finished Spanish audio to English words".format(current_datetime))
+    sleep(4)
+
+    # Press Continue
+    continue_button = browser.webpage.find_element(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
+    continue_button.click()
+    sleep(2)
+
+    logger.debug("\nEnglish words to Spanish words")
+    english_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='en' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']//span[@data-test='challenge-tap-token-text']")
+    english_words_to_spanish_words(english_words)
+    current_datetime = datetime.datetime.now()
+    logger.info("{0}: Finished English words to Spanish words".format(current_datetime))
+
+    # Press continue as many times as is necessary
+    continue_button = browser.webpage.find_elements(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
+    while (continue_button):
+        continue_button[0].click()
+        sleep(3)
+        continue_button = browser.webpage.find_elements(By.XPATH, "//button[@data-test='player-next' and @aria-disabled='false']")
+        
+
+def do_login(browser):
     login_field = browser.webpage.find_element(By.XPATH, "//input[@data-test='email-input']")
     login_field.clear()
     login_field.send_keys("david@robinsonhome.net")
@@ -274,7 +328,7 @@ def english_words_to_spanish_words(english_words):
                     logger.debug("Disabled Word: {0}".format(word.get_attribute('data-test')))
                 break
             sleep(2)
-        sleep(2)
+        sleep(3)
 
     english_words = browser.webpage.find_elements(By.XPATH, "//button[@lang='en' and contains(@data-test,'challenge-tap-token') and @aria-disabled='false']//span[@data-test='challenge-tap-token-text']")
     english_words_to_spanish_words(english_words)
@@ -383,7 +437,6 @@ class Browser:
         except:
             return False
         
-
 
 
 
