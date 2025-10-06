@@ -1,12 +1,13 @@
 #!/usr/bin/python3
 
+# TODO: Add "keep alive" code to do some activity approx once every 3 hrs in between practice sessions
 
 # NOTE: Installing selenium  
 #       The driver needs to match the version of chrome installed in the linux VM
 #       https://www.youtube.com/watch?v=RBpZ_kUTlqM&ab_channel=NorySoft
 # NOTE2: As of chrome v114, a matching chromedriver no longer needs to be manually downloaded and matched.
 # Now this is done automatically using "Chrome for Test" mechanism that comes with each version of chrome.
-# This is done through the "Selenium Manager" that is build in selenium 4.11.0+
+# This is done through the "Selenium Manager" that is built into selenium 4.11.0+
 
 
 from selenium import webdriver
@@ -132,6 +133,13 @@ def main():
             logger.info("Scheduling saturday {0}".format(timestring))
             schedule.every().saturday.at(timestring).do(do_words_practice_exercise, (browser))
 
+        # Huge assumption for now: Assume all times are xx:30.  Schedule a keep_alive at every hour, on the hour.
+        # Note that if a keep alive happens while doing a practive exercise then bad stuff will happen :(
+        logger.info("Scheduling keep-alive routine every hour (schedule.every().hour.at(\":00\").do(practice_hub_keepalive)")
+        schedule.every().hour.at(":00").do(practice_hub_keepalive, (browser))
+        #schedule.every().hour.at(":20").do(practice_hub_keepalive, (browser))
+        #schedule.every().hour.at(":25").do(practice_hub_keepalive, (browser))
+
         while True:
             # Get the number of seconds until the next job is due
             next_job_seconds = schedule.idle_seconds()
@@ -190,15 +198,24 @@ def start_browser_and_login():
         browser.webpage.save_screenshot("login_attempts_{0}.png".format(login_attempts))
         sleep(5)
 
-        login_attempts += 1
         current_url = browser.webpage.current_url
-        logger.info("New URL: {0}".format(current_url))
-        new_url = "https://www.duolingo.com/practice-hub"
-        browser.webpage.get(new_url)
+        login_attempts += 1
 
     return(browser)
 
 
+
+def practice_hub_keepalive(browser):
+    current_datetime = datetime.datetime.now()
+    logger.debug("In keepalive: {0}".format(current_datetime))
+    practice_hub = browser.webpage.find_elements(By.XPATH, "//a[@data-test='practice-hub-nav']")
+    if practice_hub:
+        logger.info("Clicking on practice_hub button")
+        practice_hub[0].click()
+    else:
+        logger.info("Trying to keep browser alive, but couldn't find the practive hub button :(")
+
+    
 
 def do_words_practice_exercise(browser):
     logger.debug("In do_words_practice_exercise()")
@@ -215,22 +232,25 @@ def do_words_practice_exercise(browser):
     #     <div class="_4fxfA"><img class="_101n8" src="https://d35aaqx5ub95lt.cloudfront.net/vendor/5187f6694476a769d4a4e28149867e3e.svg"></div>
     #   <span class="_1AZJt">Practice</span></span>
     # </a>
+
+    # Handle case where browser may have timed out and gone back to the login page
+    login_attempts = 0
     current_url = browser.webpage.current_url
-    logger.info("New URL: {0}".format(current_url))
+    while (current_url == "https://www.duolingo.com/?isLoggingIn=true" and login_attempts < 5):
+        logger.info("Current URL: {0}".format(current_url))
+        do_login(browser)
+        browser.webpage.save_screenshot("login_attempts_{0}.png".format(login_attempts))
+        sleep(5)
+
+        current_url = browser.webpage.current_url
+        login_attempts += 1
+
+
     new_url = "https://www.duolingo.com/practice-hub/words"
+    logger.info("New URL: {0}".format(current_url))
     browser.webpage.get(new_url)
     sleep(10)
 
-
-    #logger.debug("Looking for //button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-    #words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-    #while (not words_practice):
-    #    sleep(2)
-    #    logger.debug("Looking for //button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-    #    words_practice = browser.webpage.find_elements(By.XPATH, "//button[@data-test='practice-hub-collection-button']//span[contains(text(), 'Words')]")
-    #
-    #words_practice[0].click()
-    #sleep(3)
 
     start_button = browser.webpage.find_element(By.XPATH, "//button//span[contains(text(), 'Start')]")
     start_button.click()
