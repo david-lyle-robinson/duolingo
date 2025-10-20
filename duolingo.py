@@ -195,6 +195,7 @@ def start_browser_and_login():
         #if login_attempts > 0:
         #    browser.webpage = browser.webpage.get(current_url)
         do_login(browser)
+        logger.info("Login attempt: {0}".format(login_attempts))
         browser.webpage.save_screenshot("login_attempts_{0}.png".format(login_attempts))
         sleep(5)
 
